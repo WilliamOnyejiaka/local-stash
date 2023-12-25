@@ -2,7 +2,10 @@
 
 declare(strict_types=1);
 
+namespace Module;
+
 ini_set("display_errors", 1);
+
 class LocalStash
 {
 
@@ -28,7 +31,7 @@ class LocalStash
         foreach ($cacheNames as $cacheName) {
             $this->createCacheFile($cacheName);
         }
-        LocalStash::EDITFILE($this->cachePath.LocalStash::LOCAL_STORAGE. LocalStash::FILE_EXT,"caches",$cacheNames);
+        LocalStash::EDITFILE($this->cachePath . LocalStash::LOCAL_STORAGE . LocalStash::FILE_EXT, "caches", $cacheNames);
     }
 
     private function createCacheFile(string $cacheName)
@@ -49,13 +52,16 @@ class LocalStash
         }
     }
 
-    private static function EDITFILE(string $filePath, string $key, mixed $value)
+    private static function EDITFILE(string $filePath, string $key, mixed $value, int $ttl = -1)
     {
         if (file_exists($filePath)) {
 
             $jsonString = file_get_contents($filePath);
             $dataArray = json_decode($jsonString, true);
-            $dataArray[$key] = $value;
+            $dataArray[$key] = [
+                'value' => $value,
+                'ttl' => $ttl < 0  ? -1 : time() + $ttl,
+            ];
             $newJsonString = json_encode($dataArray);
 
             $result = file_put_contents($filePath, $newJsonString);
@@ -65,9 +71,9 @@ class LocalStash
         return false;
     }
 
-    public function set(string $key, mixed $value): bool
+    public function set(string $key, mixed $value, int $ttl = -1): bool
     {
-        return LocalStash::EDITFILE($this->filePath, $key, $value);
+        return LocalStash::EDITFILE($this->filePath, $key, $value, $ttl);
     }
 
 
@@ -76,8 +82,19 @@ class LocalStash
         if (file_exists($this->filePath)) {
 
             $jsonString = file_get_contents($this->filePath);
-            $dataArray = json_decode($jsonString, true);
-            return $dataArray[$key] ?? null;
+            $decodedData = json_decode($jsonString, true);
+            if (isset($decodedData[$key])) {
+                $data = $decodedData[$key];
+                $ttl = $data['ttl'];
+                if ($ttl == -1 || $ttl >= time()) {
+                    return $data['value'];
+                }
+                if ($ttl <= time()) {
+                    $this->delete($key);
+                    return null;
+                }
+            }
+            return null;
         }
         print_r(LocalStash::FILE_404);
         return false;
